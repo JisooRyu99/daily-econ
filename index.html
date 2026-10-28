@@ -78,6 +78,10 @@
   /* 용어 */
   .search { width:100%; font:inherit; font-size:16px; border:0; background:var(--card); border-radius:14px; padding:14px 16px; outline:none; }
   .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  /* 분야 버튼: 한 줄 가로 스크롤 (화면 양끝까지) */
+  .chips.scroll { flex-wrap:nowrap; overflow-x:auto; margin:0 -16px; padding:0 16px; scrollbar-width:none; }
+  .chips.scroll::-webkit-scrollbar { display:none; }
+  .chips.scroll .chip { flex:none; }
   .chip { font-size:14px; font-weight:600; padding:8px 12px; border-radius:999px; background:var(--card); color:var(--sub); }
   .chip.on { background:var(--ink); color:#fff; }
   .chip.today { background:var(--accent-soft); color:var(--accent); }

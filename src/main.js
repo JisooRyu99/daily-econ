@@ -163,7 +163,7 @@ function renderTermBody() {
     <div class="chips">${todayIds.map((id) => `<button class="chip today" data-term="${id}">${termById[id].name}</button>`).join('')}</div>`
         : ''
     }
-    <div class="chips">
+    <div class="chips scroll">
       <button class="chip ${!termFilter.cat ? 'on' : ''}" data-cat="">전체</button>
       <button class="chip ${termFilter.cat === 'saved' ? 'on' : ''}" data-cat="saved">🔖 책갈피 ${marks.length}</button>
       ${CATEGORIES.map((c) => `<button class="chip ${termFilter.cat === c.id ? 'on' : ''}" data-cat="${c.id}">${c.name}</button>`).join('')}
