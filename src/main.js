@@ -3,6 +3,7 @@ import { DEFAULT_PROFILE, buildCards, summary, weatherOf, CURRENCIES } from './i
 import { sparkline, weekChange } from './trend.js';
 import { buildQuiz, pickTerms } from './quiz.js';
 import { store, today } from './store.js';
+import { onBackPress, logEvent, logScreen } from './sdk.js';
 
 const $ = (id) => document.getElementById(id);
 // GitHub Actions가 gh-pages 브랜치에 올리는 데이터 (저장소 JisooRyu99/daily-econ)
@@ -12,7 +13,7 @@ const DAY = today();
 
 let data = null;
 let tab = 'today';
-let profile = { ...structuredClone(DEFAULT_PROFILE), ...store.get('profile', {}) };
+let profile = structuredClone(DEFAULT_PROFILE); // 저장소를 읽은 뒤(init) 채운다
 let termFilter = { q: '', cat: null };
 let history = { filter: 'all', open: DAY }; // 지난 퀴즈: 필터(all|wrong|saved), 펼친 날짜 (처음엔 오늘)
 
@@ -29,6 +30,9 @@ function dday(date) {
 }
 
 function renderToday() {
+  if (!profile.set) {
+    return `<div class="stack"><div class="card onboarding">${profileHTML()}</div></div>`;
+  }
   const cards = buildCards(data, profile);
   const sum = summary(cards);
   const dow = new Date(DAY + 'T00:00:00+09:00').getDay();
@@ -180,6 +184,7 @@ function renderTermBody() {
 function openTerm(id) {
   const t = termById[id];
   if (!t) return;
+  logEvent('term_open', { term: id, tab });
   const marked = store.get('bookmarks', []).includes(id);
   openSheet(`
     <div class="sheet-head"><h2>${t.name}</h2>
@@ -200,6 +205,7 @@ function openTerm(id) {
 // 책갈피: 최근 저장한 게 위로
 function toggleBookmark(id) {
   const marks = store.get('bookmarks', []);
+  logEvent('bookmark_toggle', { term: id, on: !marks.includes(id) });
   store.set('bookmarks', marks.includes(id) ? marks.filter((m) => m !== id) : [id, ...marks]);
   openTerm(id);
   if (tab === 'terms') render();
@@ -324,6 +330,7 @@ function pick(k) {
   const q = questions[saved.picks.length];
   saved.current = k;
   store.set('quiz:' + DAY, saved);
+  logEvent('quiz_answer', { term: q.term, correct: k === q.answer, today: !!q.today });
   // 틀린 용어는 이틀 뒤 복습, 맞힌 복습 용어는 목록에서 뺀다
   let review = store.get('review', []).filter((r) => r.term !== q.term);
   if (k !== q.answer) {
@@ -342,6 +349,8 @@ function next() {
   if (saved.picks.length >= questions.length) {
     saved.questions = questions;
     store.set('quiz:' + DAY, saved);
+    // 전환 지표: 오늘 퀴즈 3문제를 끝까지 풂
+    logEvent('quiz_complete', { right: questions.filter((q, k) => saved.picks[k] === q.answer).length });
     store.set('quizDays', [DAY, ...store.get('quizDays', []).filter((d) => d !== DAY)]);
     const s = store.get('streak', { last: null, count: 0 });
     if (s.last !== DAY) {
@@ -371,13 +380,15 @@ const choices = (key, field, items) =>
     .map(([v, label]) => `<button class="chip ${profile[key][field] === v ? 'on' : ''}" data-set="${key}.${field}" data-v="${v}">${label}</button>`)
     .join('')}</div>`;
 
-function openProfile() {
+// 관심사 설정 화면 내용. 처음엔 오늘 탭 안의 카드로, 설정 후 "내 관심사"를 누르면 시트로 보여준다.
+// (앱인토스 정책: 진입 직후 바텀시트 자동 노출 금지)
+function profileHTML() {
   const fxAmounts = {
     USD: [[300, '300달러'], [1000, '1,000달러'], [3000, '3,000달러']],
     JPY: [[30000, '3만 엔'], [100000, '10만 엔'], [300000, '30만 엔']],
     EUR: [[300, '300유로'], [1000, '1,000유로'], [3000, '3,000유로']],
   }[profile.fx.currency];
-  openSheet(`
+  return `
     <h2>${profile.set ? '내 관심사' : '나에게 해당되는 걸 골라주세요'}</h2>
     <p class="lead" style="font-size:14px;color:var(--sub)">고른 것만 "내 돈으로 얼마인지" 계산해서 보여드려요. 대략적인 값이면 충분해요.</p>
     ${group('fx', '해외여행·해외 직구', '환율이 바뀌면 얼마나 달라지는지',
@@ -389,7 +400,15 @@ function openProfile() {
     ${group('savings', '예·적금', '금리가 바뀌면 예금 이자가 어떻게 되는지')}
     ${group('grocery', '장보기', '물가가 오르면 한 달 장보기가 얼마나 늘었는지',
       choices('grocery', 'monthly', [[300_000, '월 30만'], [600_000, '월 60만'], [1_000_000, '월 100만']]))}
-    <button class="btn" data-save>${profile.set ? '저장하기' : '시작하기'}</button>`);
+    <button class="btn" data-save>${profile.set ? '저장하기' : '시작하기'}</button>`;
+}
+
+function openProfile() {
+  // 처음(설정 전)에 오늘 탭에서 고르는 중이면 화면 안 카드를 다시 그린다
+  if (!profile.set && $('sheet').hidden) {
+    tab = 'today';
+    render();
+  } else openSheet(profileHTML());
 }
 
 function setProfile(path, v) {
@@ -405,14 +424,39 @@ function setProfile(path, v) {
 function openSheet(html) {
   $('sheet-body').innerHTML = html;
   $('sheet').hidden = false;
+  syncBack();
 }
 function closeSheet() {
   $('sheet').hidden = true;
+  syncBack();
+}
+
+// 안드로이드 뒤로가기: 설명 창이 열려 있으면 닫고, 오늘 탭이 아니면 오늘 탭으로.
+// 닫을 게 없을 때(오늘 탭, 창 없음)는 구독을 풀어서 프레임워크가 앱을 종료하게 둔다
+// (정책: 최초 화면에서 뒤로가기 = 미니앱 종료).
+let backUnsub = null;
+function syncBack() {
+  const need = !$('sheet').hidden || tab !== 'today';
+  if (need && !backUnsub) backUnsub = onBackPress(handleBack);
+  else if (!need && backUnsub) {
+    backUnsub();
+    backUnsub = null;
+  }
+}
+function handleBack() {
+  if (!$('sheet').hidden) closeSheet();
+  else if (tab !== 'today') {
+    tab = 'today';
+    render();
+    window.scrollTo(0, 0);
+  }
 }
 
 function render() {
   $('view').innerHTML = tab === 'today' ? renderToday() : tab === 'terms' ? renderTerms() : renderQuiz();
+  syncBack();
   document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  $('tabbar').hidden = !profile.set; // 처음 설정 중엔 탭바를 숨겨 "시작하기"에 집중
   const d = new Date(DAY + 'T00:00:00+09:00');
   $('h-date').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 ${'일월화수목금토'[d.getDay()]}요일`;
   if (tab === 'terms') {
@@ -432,7 +476,7 @@ document.addEventListener('click', (e) => {
     return;
   }
   const d = el.dataset;
-  if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); }
+  if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); logScreen(tab); }
   else if (d.bookmark) toggleBookmark(d.bookmark);
   else if (d.qmark) {
     const m = store.get('qmarks', []);
@@ -447,13 +491,24 @@ document.addEventListener('click', (e) => {
   else if ('close' in d) closeSheet();
   else if (d.toggle) { profile[d.toggle].on = !profile[d.toggle].on; openProfile(); }
   else if (d.set) setProfile(d.set, d.v);
-  else if ('save' in d) { profile.set = true; store.set('profile', profile); closeSheet(); render(); }
+  else if ('save' in d) {
+    const first = !profile.set;
+    profile.set = true;
+    store.set('profile', profile);
+    closeSheet();
+    render();
+    logEvent('profile_save', { first, fx: profile.fx.on && profile.fx.currency, car: profile.car.on, loan: profile.loan.on, savings: profile.savings.on, grocery: profile.grocery.on });
+  }
   else if (el.id === 'gear') openProfile();
 });
 
 (async function init() {
+  // 저장소 읽기: 고정 키 + 오늘 퀴즈 → 푼 날짜 목록을 보고 지난 퀴즈들
+  await store.load(['profile', 'review', 'bookmarks', 'qmarks', 'streak', 'quizDays', 'quiz:' + DAY]);
+  await store.load(store.get('quizDays', []).map((d) => 'quiz:' + d));
+  profile = { ...structuredClone(DEFAULT_PROFILE), ...store.get('profile', {}) };
   // 개발 중엔 public/today.json, 빌드(출시)에선 GitHub Pages의 today.json (GitHub Actions가 하루 두 번 갱신)
   data = await fetch(import.meta.env.DEV ? '/today.json' : DATA_URL, { cache: 'no-store' }).then((r) => r.json());
   render();
-  if (!profile.set) openProfile();
+  logScreen('today');
 })();

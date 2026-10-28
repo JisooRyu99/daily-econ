@@ -1,17 +1,28 @@
-// 저장소. 앱인토스 출시 땐 SDK Storage로 교체 (지금은 localStorage, 막혀 있어도 동작).
+// 저장소: 시작할 때 필요한 키를 한 번에 읽어 메모리에 두고(load), 읽기는 메모리에서 바로,
+// 쓰기는 메모리 + 토스 Storage(비동기)에 같이 한다. 토스 Storage가 비동기라 화면 코드가
+// 매번 await하지 않도록 이렇게 둔다.
+import { storageGet, storageSet } from './sdk.js';
+
+const cache = new Map();
+
 export const store = {
+  async load(keys) {
+    await Promise.all(
+      keys.map(async (k) => {
+        const raw = await storageGet(k);
+        if (raw == null) return;
+        try {
+          cache.set(k, JSON.parse(raw));
+        } catch {}
+      })
+    );
+  },
   get(key, fallback) {
-    try {
-      const v = localStorage.getItem(key);
-      return v == null ? fallback : JSON.parse(v);
-    } catch {
-      return fallback;
-    }
+    return cache.has(key) ? cache.get(key) : fallback;
   },
   set(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {}
+    cache.set(key, value);
+    storageSet(key, JSON.stringify(value));
   },
 };
 

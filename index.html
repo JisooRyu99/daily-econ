@@ -132,6 +132,7 @@
     background:rgba(255,255,255,.96); box-shadow: 0 6px 24px rgba(0,0,0,.12);
     z-index:20;
   }
+  .tabbar[hidden] { display:none; }
   .tabbar button { white-space:nowrap; font-size:14px; font-weight:700; color:var(--muted); padding:10px 20px; border-radius:999px; }
   .tabbar button.on { background:var(--ink); color:#fff; }
 
@@ -145,7 +146,8 @@
     animation: up .28s cubic-bezier(.2,.8,.3,1);
   }
   @keyframes up { from { transform: translateY(40px); opacity:0; } }
-  .sheet-body h2 { font-size:22px; font-weight:700; }
+  .sheet-body h2, .onboarding h2 { font-size:22px; font-weight:700; }
+  .onboarding .lead { margin-top:8px; line-height:1.6; }
   .sheet-head { display:flex; justify-content:space-between; align-items:center; gap:12px; }
   .mark { flex:none; font-size:14px; font-weight:700; color:var(--sub); background:var(--slot); padding:8px 12px; border-radius:999px; }
   .mark.on { color:var(--accent); background:var(--accent-soft); }
