@@ -1,0 +1,46 @@
+name: 오늘의 경제 데이터 갱신·배포
+
+# 하루 두 번 (매일, 주말 포함)
+#  - 07:00 KST (22:00 UTC 전날): 아침에 볼 데이터 — 유가·금리·물가·일정 갱신 (환율은 전 영업일 값)
+#  - 11:30 KST (02:30 UTC): 수출입은행 오늘 환율(오전 11시쯤 발표) 반영
+# 수동 실행도 가능 (Actions 탭 → Run workflow).
+on:
+  schedule:
+    - cron: "0 22 * * *"
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-data
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      # API 키는 저장소 Settings → Secrets and variables → Actions 에 넣는다 (.env는 git에 안 올라감)
+      - name: Generate today.json
+        env:
+          EXIM_KEY: ${{ secrets.EXIM_KEY }}
+          ECOS_KEY: ${{ secrets.ECOS_KEY }}
+          OPINET_KEY: ${{ secrets.OPINET_KEY }}
+        run: |
+          mkdir -p site
+          node data-pipeline/generate.mjs site/today.json
+
+      # site/today.json → GitHub Pages(gh-pages 브랜치). 앱이 이 주소를 fetch
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
