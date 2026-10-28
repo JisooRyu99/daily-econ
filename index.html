@@ -15,14 +15,16 @@
     --st: env(safe-area-inset-top, 0px);
     --up:#f04452; --down:#3182f6; --ok:#03b26c; --ok-soft:#e6f8f0; --bad-soft:#ffeeee;
   }
-  html, body { height:100%; overscroll-behavior:none; }
+  /* height가 아니라 min-height: 높이를 화면에 고정하면 내용이 길 때 아래 여백(탭바 자리)이
+     내용 끝이 아니라 화면 끝에 붙어서, 맨 아래 내용이 떠 있는 탭바에 가려졌다 */
+  html, body { min-height:100%; overscroll-behavior:none; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-    background:var(--bg); color:var(--ink); display:flex; justify-content:center; letter-spacing:-0.01em;
+    background:var(--bg); color:var(--ink); display:flex; justify-content:center; align-items:flex-start; letter-spacing:-0.01em;
   }
   #app {
     width:100%; max-width:480px; min-height:100%;
-    padding: calc(var(--st) + 16px) 16px calc(var(--sb) + 130px);
+    padding: calc(var(--st) + 16px) 16px calc(var(--sb) + 110px);
   }
   button { font:inherit; border:0; background:none; color:inherit; cursor:pointer; }
 
