@@ -88,10 +88,29 @@ async function opinet() {
     const value = num(o.PRICE);
     return { value: round(value, 2), prev: round(value - num(o.DIFF), 2), date: dash(o.TRADE_DT) };
   };
-  return { gasoline: pick('B027'), diesel: pick('D047') };
+  // 최근 7일 전국 평균 (어제까지) + 오늘 → 일주일 추세
+  const recent = async (code) => {
+    const rows = (await json(`https://www.opinet.co.kr/api/avgRecentPrice.do?out=json&code=${KEYS.opinet}&prodcd=${code}`)).RESULT.OIL;
+    return rows.map((x) => ({ d: dash(x.DATE), v: round(num(x.PRICE), 2) }));
+  };
+  const withHistory = async (code) => {
+    const today = pick(code);
+    const hist = (await recent(code)).filter((h) => h.d < today.date);
+    return { ...today, history: [...hist, { d: today.date, v: today.value }] };
+  };
+  return { gasoline: await withHistory('B027'), diesel: await withHistory('D047') };
 }
 
 // ---------- 한국은행 ECOS ----------
+
+// 환율 최근 한 달 (영업일 약 22개) — 731Y001 주요국 통화의 대원화 환율, 매매기준율
+async function fxHistory() {
+  const to = kstToday();
+  const from = new Date(to.getTime() - 45 * 86400e3);
+  const series = async (item) =>
+    (await ecos('731Y001', 'D', ymd(from), ymd(to), item, 60)).slice(-22).map((r) => ({ d: dash(r.time), v: r.value }));
+  return { usdkrw: await series('0000001'), jpykrw100: await series('0000002'), eurkrw: await series('0000003') };
+}
 
 async function ecos(stat, cycle, from, to, item, count = 400) {
   const r = await json(`https://ecos.bok.or.kr/api/StatisticSearch/${KEYS.ecos}/json/kr/1/${count}/${stat}/${cycle}/${from}/${to}/${item}`);
@@ -108,18 +127,28 @@ async function baseRate() {
   const value = rows.at(-1).value;
   let i = rows.length - 1;
   while (i > 0 && rows[i - 1].value === value) i--;
-  return { value, prev: i > 0 ? rows[i - 1].value : value, decidedAt: i > 0 ? dash(rows[i].time) : null };
+  // 최근 1년 동안 바뀐 날들 (예: 7/16 2.75, 8/27 3.0)
+  const yearAgo = ymd(new Date(to.getTime() - 365 * 86400e3));
+  const changes = rows
+    .filter((r, k) => k > 0 && r.value !== rows[k - 1].value && r.time >= yearAgo)
+    .map((r) => ({ d: dash(r.time), v: r.value }));
+  return { value, prev: i > 0 ? rows[i - 1].value : value, decidedAt: i > 0 ? dash(rows[i].time) : null, changes };
 }
 
 // 소비자물가: 최근 달 지수 ÷ 작년 같은 달 지수
 async function cpi() {
   const to = kstToday();
   const from = new Date(to);
-  from.setUTCMonth(from.getUTCMonth() - 15);
+  from.setUTCMonth(from.getUTCMonth() - 20);
   const rows = await ecos('901Y009', 'M', ymd(from).slice(0, 6), ymd(to).slice(0, 6), '0', 30);
+  const yoyOf = (r) => {
+    const ago = rows.find((x) => x.time === String(Number(r.time.slice(0, 4)) - 1) + r.time.slice(4));
+    return ago ? round((r.value / ago.value - 1) * 100, 1) : null;
+  };
   const last = rows.at(-1);
-  const yearAgo = rows.find((r) => r.time === String(Number(last.time.slice(0, 4)) - 1) + last.time.slice(4));
-  return { yoy: round((last.value / yearAgo.value - 1) * 100, 1), month: `${last.time.slice(0, 4)}-${last.time.slice(4)}` };
+  // 최근 6개월 물가 상승률 추세
+  const history = rows.slice(-6).map((r) => ({ d: `${r.time.slice(0, 4)}-${r.time.slice(4)}`, v: yoyOf(r) })).filter((h) => h.v != null);
+  return { yoy: yoyOf(last), month: `${last.time.slice(0, 4)}-${last.time.slice(4)}`, history };
 }
 
 // ---------- 실행 ----------
@@ -145,6 +174,18 @@ console.log('키:', Object.entries(KEYS).map(([k, v]) => `${k} ${v ? '있음' : 
 
 const fx = KEYS.exim ? await tryOr('수출입은행 환율', eximRates, yahooRates) : await yahooRates();
 const oil = KEYS.opinet ? await tryOr('오피넷', opinet, () => ({ gasoline: SAMPLE.gasoline, diesel: SAMPLE.diesel })) : { gasoline: SAMPLE.gasoline, diesel: SAMPLE.diesel };
+// 환율 기록: 오늘 값(수출입은행)이 ECOS에 아직 없으면 끝에 붙인다
+if (KEYS.ecos) {
+  const hist = await tryOr('ECOS 환율 기록', fxHistory, () => null);
+  if (hist) {
+    for (const [k, h] of Object.entries(hist)) {
+      const today = fx[k];
+      const day = today.note?.match(/(\d+)월 (\d+)일/);
+      const d = day ? `${h.at(-1)?.d.slice(0, 4)}-${String(day[1]).padStart(2, '0')}-${String(day[2]).padStart(2, '0')}` : null;
+      fx[k].history = d && !h.some((x) => x.d === d) ? [...h, { d, v: today.value }] : h;
+    }
+  }
+}
 const rate = KEYS.ecos ? await tryOr('ECOS 기준금리', baseRate, () => SAMPLE.baseRate) : SAMPLE.baseRate;
 const price = KEYS.ecos ? await tryOr('ECOS 소비자물가', cpi, () => SAMPLE.cpi) : SAMPLE.cpi;
 

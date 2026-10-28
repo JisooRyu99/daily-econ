@@ -1,3 +1,5 @@
+import { fxTrend, oilTrend, rateTrend, cpiTrend } from './trend.js';
+
 // 경제 지표 → "내 지갑에 얼마" 카드.
 // 숫자는 전부 데이터에서 계산하고 문장은 템플릿으로 만든다 (AI가 숫자를 지어낼 일이 없음).
 // 투자 판단이 아니라 생활비 영향만 말한다.
@@ -60,6 +62,10 @@ export function buildCards(data, profile) {
       mood,
       daily: true,
       short: cur.title,
+      trend: fxTrend(i.history),
+      spark: i.history?.map((h) => h.v),
+      sparkSpan: i.value * 0.02, // 환율 2% 미만 움직임은 완만하게
+      sparkLabel: '최근 한 달',
       text:
         mood === 'flat'
           ? `[[exchange-rate|환율]]이 거의 그대로라 해외에서 쓰는 돈도 어제와 비슷해요.`
@@ -85,6 +91,10 @@ export function buildCards(data, profile) {
       mood,
       daily: true,
       short: diesel ? '경유' : '휘발유',
+      trend: oilTrend(i.history),
+      spark: i.history?.map((h) => h.v),
+      sparkSpan: 30, // 유가 30원 미만 움직임은 완만하게
+      sparkLabel: '최근 일주일',
       text:
         mood === 'flat'
           ? `기름값이 어제와 거의 같아요.`
@@ -128,6 +138,7 @@ export function buildCards(data, profile) {
       up: delta > 0,
       mood,
       daily: recent, // 두 달 전 결정을 매일 "오늘 날씨"에 넣지 않는다
+      trend: rateTrend(r.changes),
       short: '기준금리',
       text: lines.join(' '),
       hint: `[[base-rate|기준금리]]는 [[mpc|금통위]]가 1년에 8번 정해요.`,
@@ -148,6 +159,10 @@ export function buildCards(data, profile) {
       up: c.yoy > 0,
       mood: c.yoy > 3 ? 'bad' : c.yoy < 1 ? 'good' : 'flat',
       daily: false, // 한 달에 한 번 바뀌는 지표
+      trend: cpiTrend(c.history),
+      spark: c.history?.map((h) => h.v),
+      sparkSpan: 1.5, // 물가 상승률 1.5%p 미만 움직임은 완만하게
+      sparkLabel: '최근 6개월 상승률',
       text: `작년에 ${won(profile.grocery.monthly)}이던 한 달 장보기가 지금은 평균적으로 약 ${won(now)}이에요.`,
       hint: `[[cpi|소비자물가지수]]는 평균이라, 자주 사는 품목은 더 올랐을 수도 있어요.`,
       terms: ['cpi', 'inflation'],

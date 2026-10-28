@@ -1,5 +1,6 @@
 import { TERMS, CATEGORIES, termById } from './terms.js';
-import { DEFAULT_PROFILE, buildCards, summary, weatherOf } from './impact.js';
+import { DEFAULT_PROFILE, buildCards, summary, weatherOf, CURRENCIES } from './impact.js';
+import { sparkline, weekChange } from './trend.js';
 import { buildQuiz, pickTerms } from './quiz.js';
 import { store, today } from './store.js';
 
@@ -30,6 +31,8 @@ function dday(date) {
 function renderToday() {
   const cards = buildCards(data, profile);
   const sum = summary(cards);
+  const dow = new Date(DAY + 'T00:00:00+09:00').getDay();
+  if ((dow === 0 || dow === 6) && sum.items.length) sum.sub = '주말엔 발표가 없어서 마지막 영업일 기준이에요';
   const asOf = new Date(data.asOf);
   const asOfText = `${asOf.getMonth() + 1}월 ${asOf.getDate()}일 ${String(asOf.getHours()).padStart(2, '0')}:${String(asOf.getMinutes()).padStart(2, '0')} 기준`;
   const anySample = cards.some((c) => c.sample) || data.events.some((e) => e.sample);
@@ -49,6 +52,8 @@ function renderToday() {
       ${anySample ? '<span class="badge">"예시" 표시는 아직 실제 데이터가 아니에요</span>' : ''}
     </div>
 
+    ${renderWeekend()}
+
     ${cards
       .map(
         (c) => `<div class="card">
@@ -60,6 +65,14 @@ function renderToday() {
         <div class="ind-weather">${ICON[weatherOf(c)]}</div>
       </div>
       <div class="ind-text">${linkify(c.text)}</div>
+      ${
+        c.trend
+          ? `<div class="trend">
+        ${c.spark ? sparkline(c.spark, { minSpan: c.sparkSpan }) : ''}
+        <div class="trend-text">${c.sparkLabel ? `<span class="trend-label">${c.sparkLabel}</span>` : ''}${c.trend.text}${c.trend.range ? `<div class="trend-range">${c.trend.range}</div>` : ''}</div>
+      </div>`
+          : ''
+      }
       <div class="ind-hint">${linkify(c.hint)}</div>
       ${c.note ? `<div class="ind-note">${c.note}</div>` : ''}
     </div>`
@@ -87,6 +100,40 @@ function renderToday() {
 }
 
 // ---------- 용어 ----------
+
+// 주말(토·일): 새 발표가 없으니 한 주를 정리해준다
+function renderWeekend() {
+  const dow = new Date(DAY + 'T00:00:00+09:00').getDay();
+  if (dow !== 0 && dow !== 6) return '';
+  const ind = data.indicators;
+  const won1 = (n, d = 1) => n.toLocaleString('ko-KR', { maximumFractionDigits: d });
+  const rows = [];
+  if (profile.fx.on) {
+    const cur = CURRENCIES[profile.fx.currency] || CURRENCIES.USD;
+    const w = weekChange(ind[cur.key].history);
+    if (w) rows.push({ name: cur.title, from: `${won1(w.from)}원`, to: `${won1(w.to)}원`, diff: w.diff, unit: '원', mood: w.diff > 0 ? 'bad' : 'good' });
+  }
+  if (profile.car.on) {
+    const diesel = profile.car.fuel === 'diesel';
+    const w = weekChange((diesel ? ind.diesel : ind.gasoline).history);
+    if (w) rows.push({ name: diesel ? '경유' : '휘발유', from: `${won1(w.from, 0)}원`, to: `${won1(w.to, 0)}원`, diff: w.diff, unit: '원', mood: w.diff > 0 ? 'bad' : 'good' });
+  }
+  const weekEnd = new Date(Date.parse(DAY) + 7 * 86400e3).toISOString().slice(0, 10);
+  const next = data.events.filter((e) => e.date >= DAY && e.date <= weekEnd);
+  if (!rows.length && !next.length) return '';
+  return `<div class="card">
+    <div class="ind-title">이번 주 정리</div>
+    <div class="week-sub">주말엔 새 발표가 없어요. 한 주 동안 이렇게 움직였어요</div>
+    ${rows
+      .map((r) => {
+        const flat = Math.abs(r.diff) < 1;
+        return `<div class="week-row"><span class="week-name">${r.name}</span>
+        <span>${r.from} → <b>${r.to}</b> <span class="ind-change ${flat ? 'flat' : r.diff > 0 ? 'up' : 'down'}">${flat ? '거의 그대로' : `${r.diff > 0 ? '+' : '−'}${won1(Math.abs(r.diff))}${r.unit}`}</span></span></div>`;
+      })
+      .join('')}
+    ${next.length ? `<div class="week-next">다음 주: ${next.map((e) => `${+e.date.slice(5, 7)}/${+e.date.slice(8)} ${esc(e.title)}`).join(', ')}</div>` : ''}
+  </div>`;
+}
 
 function renderTerms() {
   const todayIds = [...new Set(buildCards(data, profile).flatMap((c) => c.terms))];
