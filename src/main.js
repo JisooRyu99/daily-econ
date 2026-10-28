@@ -135,19 +135,29 @@ function renderWeekend() {
   </div>`;
 }
 
+// 검색창은 한 번만 그리고, 글자를 칠 때는 아래 결과만 바꾼다.
+// (검색창까지 다시 그리면 한글 조합이 끊겨 "ㅁㅐㅁㅐ"처럼 입력됐다)
 function renderTerms() {
+  return `<div class="stack">
+    <input class="search" id="term-search" placeholder="궁금한 경제 용어 검색" value="${esc(termFilter.q)}" />
+    <div class="stack" id="term-body">${renderTermBody()}</div>
+  </div>`;
+}
+
+// 띄어쓰기·대소문자 무시 (예: "코 픽스", "cofix")
+const norm = (s) => s.replace(/\s+/g, '').toLowerCase();
+
+function renderTermBody() {
   const todayIds = [...new Set(buildCards(data, profile).flatMap((c) => c.terms))];
-  const q = termFilter.q.trim();
+  const q = norm(termFilter.q);
   const marks = store.get('bookmarks', []);
   const base = termFilter.cat === 'saved' ? marks.map((id) => termById[id]).filter(Boolean) : TERMS;
   const list = base.filter(
     (t) =>
       (!termFilter.cat || termFilter.cat === 'saved' || t.category === termFilter.cat) &&
-      (!q || t.name.includes(q) || t.short.includes(q))
+      (!q || norm(t.name).includes(q) || norm(t.short).includes(q))
   );
-  return `<div class="stack">
-    <input class="search" id="term-search" placeholder="궁금한 경제 용어 검색" value="${esc(termFilter.q)}" />
-    ${
+  return `${
       todayIds.length && !q
         ? `<div class="section-title" style="margin-top:4px">오늘 나온 용어</div>
     <div class="chips">${todayIds.map((id) => `<button class="chip today" data-term="${id}">${termById[id].name}</button>`).join('')}</div>`
@@ -164,8 +174,7 @@ function renderTerms() {
           ? list.map((t) => `<button class="term-row" data-term="${t.id}"><div class="n">${t.name}</div><div class="s">${t.short}</div></button>`).join('')
           : `<div class="empty">${termFilter.cat === 'saved' && !q ? '용어 설명에서 "책갈피"를 누르면<br>다시 볼 용어가 여기 모여요' : '찾는 용어가 아직 없어요'}</div>`
       }
-    </div>
-  </div>`;
+    </div>`;
 }
 
 function openTerm(id) {
@@ -410,11 +419,7 @@ function render() {
     const input = $('term-search');
     input.addEventListener('input', () => {
       termFilter.q = input.value;
-      const pos = input.selectionStart;
-      render();
-      const again = $('term-search');
-      again.focus();
-      again.setSelectionRange(pos, pos);
+      $('term-body').innerHTML = renderTermBody();
     });
   }
 }
@@ -436,7 +441,7 @@ document.addEventListener('click', (e) => {
   } else if (d.hfilter) { history.filter = d.hfilter; render(); }
   else if (d.hday) { history.open = history.open === d.hday ? null : d.hday; render(); }
   else if (d.term) openTerm(d.term);
-  else if ('cat' in d) { termFilter.cat = d.cat || null; render(); }
+  else if ('cat' in d) { termFilter.cat = d.cat || null; $('term-body').innerHTML = renderTermBody(); }
   else if (d.pick) pick(+d.pick);
   else if ('next' in d) next();
   else if ('close' in d) closeSheet();
