@@ -10,6 +10,9 @@
   :root {
     --bg:#f4f5f7; --card:#fff; --ink:#191f28; --sub:#4e5968; --muted:#8b95a1;
     --line:#e5e8eb; --slot:#f2f4f6; --accent:#3182f6; --accent-soft:#e8f3ff;
+    /* 안전 영역: 브라우저 값이 기본, 토스 앱 안에서는 SDK(SafeArea.get) 값으로 덮어쓴다 (src/sdk.js) */
+    --sb: env(safe-area-inset-bottom, 0px);
+    --st: env(safe-area-inset-top, 0px);
     --up:#f04452; --down:#3182f6; --ok:#03b26c; --ok-soft:#e6f8f0; --bad-soft:#ffeeee;
   }
   html, body { height:100%; overscroll-behavior:none; }
@@ -19,7 +22,7 @@
   }
   #app {
     width:100%; max-width:480px; min-height:100%;
-    padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 110px);
+    padding: calc(var(--st) + 16px) 16px calc(var(--sb) + 130px);
   }
   button { font:inherit; border:0; background:none; color:inherit; cursor:pointer; }
 
@@ -127,7 +130,7 @@
   /* 플로팅 탭바 (앱인토스: 화면 폭을 채우는 고정 탭바는 반려) */
   .tabbar {
     position:fixed; left:50%; transform:translateX(-50%);
-    bottom:calc(env(safe-area-inset-bottom) + 16px);
+    bottom:calc(var(--sb) + 16px);
     display:flex; gap:4px; padding:6px; border-radius:999px;
     background:rgba(255,255,255,.96); box-shadow: 0 6px 24px rgba(0,0,0,.12);
     z-index:20;
@@ -142,7 +145,7 @@
   @keyframes fade { from { opacity:0; } }
   .sheet-body {
     background:var(--card); width:100%; max-width:480px; max-height:85vh; overflow:auto;
-    border-radius:24px 24px 0 0; padding:24px 20px calc(env(safe-area-inset-bottom) + 20px);
+    border-radius:24px 24px 0 0; padding:24px 20px calc(var(--sb) + 20px);
     animation: up .28s cubic-bezier(.2,.8,.3,1);
   }
   @keyframes up { from { transform: translateY(40px); opacity:0; } }

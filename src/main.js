@@ -3,7 +3,7 @@ import { DEFAULT_PROFILE, buildCards, summary, weatherOf, CURRENCIES } from './i
 import { sparkline, weekChange } from './trend.js';
 import { buildQuiz, pickTerms } from './quiz.js';
 import { store, today } from './store.js';
-import { onBackPress, logEvent, logScreen } from './sdk.js';
+import { onBackPress, logEvent, logScreen, applySafeArea } from './sdk.js';
 
 const $ = (id) => document.getElementById(id);
 // GitHub Actions가 gh-pages 브랜치에 올리는 데이터 (저장소 JisooRyu99/daily-econ)
@@ -503,6 +503,7 @@ document.addEventListener('click', (e) => {
 });
 
 (async function init() {
+  applySafeArea();
   // 저장소 읽기: 고정 키 + 오늘 퀴즈 → 푼 날짜 목록을 보고 지난 퀴즈들
   await store.load(['profile', 'review', 'bookmarks', 'qmarks', 'streak', 'quizDays', 'quiz:' + DAY]);
   await store.load(store.get('quizDays', []).map((d) => 'quiz:' + d));

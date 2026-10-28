@@ -34,6 +34,26 @@ export async function storageSet(key, value) {
   } catch {}
 }
 
+// ---------- 안전 영역 ----------
+// 토스 웹뷰에서는 CSS env(safe-area-inset-*)가 제대로 안 들어올 수 있어서(실기기에서 하단 내용이
+// 떠 있는 탭바에 가려졌음) SDK 값을 CSS 변수(--sb)로 넣는다. 위쪽은 토스 상단바가 있어 건드리지 않는다.
+export function applySafeArea() {
+  if (!inToss) return;
+  const set = (ins) => {
+    if (ins && Number.isFinite(ins.bottom)) document.documentElement.style.setProperty('--sb', `${ins.bottom}px`);
+  };
+  try {
+    const api = Toss.SafeArea || Toss.SafeAreaInsets;
+    set(api.get());
+    api.subscribe({ onEvent: set });
+  } catch (e) {
+    try {
+      set(Toss.getSafeAreaInsets());
+    } catch {}
+    console.warn('SafeArea 실패', e);
+  }
+}
+
 // ---------- 안드로이드 뒤로가기 ----------
 // 구독하는 동안만 우리가 처리하고, 해제하면 프레임워크 기본 동작(최초 화면에서 앱 종료)으로 돌아간다.
 // 그래서 "닫을 게 있을 때만" 구독한다. 반환값은 구독 해제 함수.
