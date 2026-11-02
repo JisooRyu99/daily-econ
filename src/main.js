@@ -3,7 +3,7 @@ import { DEFAULT_PROFILE, buildCards, summary, weatherOf, CURRENCIES } from './i
 import { sparkline, weekChange } from './trend.js';
 import { buildQuiz, pickTerms } from './quiz.js';
 import { store, today } from './store.js';
-import { onBackPress, logEvent, logScreen, applySafeArea } from './sdk.js';
+import { onBackPress, logEvent, logScreen, applySafeArea, shareWithLink, requestReview } from './sdk.js';
 
 const $ = (id) => document.getElementById(id);
 // GitHub Actions가 gh-pages 브랜치에 올리는 데이터 (저장소 JisooRyu99/daily-econ)
@@ -46,7 +46,7 @@ function renderToday() {
     <div class="card">
       <div class="hero">
         <div class="icon">${ICON[sum.weather]}</div>
-        <div>
+        <div class="hero-main">
           <div class="label">오늘 내 지갑 날씨</div>
           <div class="title">${sum.title}</div>
           <div class="sub">${sum.sub}</div>
@@ -54,6 +54,8 @@ function renderToday() {
       </div>
       ${sum.items.length ? `<div class="moods">${sum.items.map((x) => `<span class="mood ${x.mood}">${ICON[{ bad: 'rain', good: 'sun', flat: 'cloud' }[x.mood]]} ${x.name}</span>`).join('')}</div>` : ''}
       ${anySample ? '<span class="badge">"예시" 표시는 아직 실제 데이터가 아니에요</span>' : ''}
+      ${dataNotice()}
+      <button class="share-btn" data-share="today">친구에게 오늘 날씨 알려주기</button>
     </div>
 
     ${renderWeekend()}
@@ -299,6 +301,7 @@ function renderQuizMain() {
       <div class="block"><h3>오늘 본 용어</h3><div class="chips">${[...new Set(questions.map((q) => q.term))]
         .map((id) => `<button class="chip today" data-term="${id}">${termById[id].name}</button>`)
         .join('')}</div></div>
+      <button class="btn" data-share="quiz">같이 풀어보자고 공유하기</button>
       <div class="done-sub" style="margin-top:16px">내일 새 문제가 나와요 · 아래에서 오늘 문제를 다시 볼 수 있어요</div>
     </div>`;
   }
@@ -356,6 +359,12 @@ function next() {
     if (s.last !== DAY) {
       const yesterday = new Date(Date.parse(DAY) - 86400e3).toISOString().slice(0, 10);
       store.set('streak', { last: DAY, count: s.last === yesterday ? s.count + 1 : 1 });
+      // 퀴즈를 3일째 이어서 끝낸 날, 한 번만 리뷰를 요청 (익숙해진 사용자에게)
+      const count = s.last === yesterday ? s.count + 1 : 1;
+      if (count >= 3 && !store.get('reviewAsked', false)) {
+        store.set('reviewAsked', true);
+        setTimeout(() => requestReview().then((ok) => logEvent('review_request', { ok })), 800);
+      }
     }
   }
   if (saved.questions) history.open = DAY;
@@ -419,6 +428,72 @@ function setProfile(path, v) {
   openProfile();
 }
 
+// ---------- 데이터 ----------
+// 개발 중엔 public/today.json, 빌드(출시)에선 GitHub Pages의 today.json (GitHub Actions가 하루 두 번 갱신)
+let dataState = 'ok'; // ok | stale-cache (최신을 못 받아 저장본 표시) | error (보여줄 데이터 없음)
+
+async function loadData() {
+  try {
+    const res = await fetch(import.meta.env.DEV ? '/today.json' : DATA_URL, { cache: 'no-store', signal: AbortSignal.timeout(8000) });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    data = await res.json();
+    store.set('lastData', data);
+    dataState = 'ok';
+  } catch (e) {
+    console.warn('데이터 불러오기 실패', e);
+    dataState = data ? 'stale-cache' : 'error';
+    logEvent('data_error', { cached: !!data });
+  }
+  render();
+}
+
+// 데이터가 오래됐거나 최신을 못 받았을 때 오늘 탭에 안내
+function dataNotice() {
+  const ageDays = Math.floor((Date.now() - Date.parse(data.asOf)) / 86400e3);
+  if (dataState === 'stale-cache') return '<div class="notice">최신 데이터를 불러오지 못해 마지막으로 받은 내용을 보여드려요 <button class="link" data-retry>다시 시도</button></div>';
+  if (ageDays >= 2) return `<div class="notice">데이터가 ${ageDays}일 전 기준이에요. 곧 새로 갱신돼요</div>`;
+  return '';
+}
+
+function renderError() {
+  return `<div class="card empty-state">
+    <div class="done-big">📡</div>
+    <div class="done-title">데이터를 불러오지 못했어요</div>
+    <div class="done-sub">인터넷 연결을 확인한 뒤 다시 시도해주세요</div>
+    <button class="btn" data-retry>다시 시도</button>
+  </div>`;
+}
+
+// ---------- 공유 ----------
+async function share(kind) {
+  let text;
+  if (kind === 'today') {
+    const cards = buildCards(data, profile);
+    const sum = summary(cards);
+    const lines = cards.filter((c) => c.daily || c.id === 'rate').map((c) => `${c.title} ${c.value} (${c.change})`);
+    text = `오늘 내 지갑 날씨 ${ICON[sum.weather]} ${sum.title}\n${lines.join('\n')}\n경제예보에서 내 생활비 기준으로 확인해보세요`;
+  } else {
+    const { questions, saved } = quizState();
+    const right = questions.filter((q, k) => saved.picks[k] === q.answer).length;
+    const streak = store.get('streak', { count: 1 }).count;
+    text = `오늘 경제 퀴즈 ${questions.length}문제 중 ${right}개 맞혔어요 📘${streak > 1 ? ` (${streak}일째 공부 중)` : ''}\n경제예보에서 같이 풀어봐요`;
+  }
+  const r = await shareWithLink(text);
+  logEvent('share', { kind, result: r });
+  if (r === 'copied') toast('공유 문구를 복사했어요');
+  else if (r === 'failed') toast('공유하지 못했어요. 잠시 후 다시 시도해주세요');
+}
+
+// ---------- 알림 문구 ----------
+let toastTimer = 0;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
 // ---------- 공통 ----------
 
 function openSheet(html) {
@@ -453,6 +528,11 @@ function handleBack() {
 }
 
 function render() {
+  if (!data) {
+    $('view').innerHTML = renderError();
+    $('tabbar').hidden = true;
+    return;
+  }
   $('view').innerHTML = tab === 'today' ? renderToday() : tab === 'terms' ? renderTerms() : renderQuiz();
   syncBack();
   document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
@@ -477,6 +557,8 @@ document.addEventListener('click', (e) => {
   }
   const d = el.dataset;
   if (d.tab) { tab = d.tab; render(); window.scrollTo(0, 0); logScreen(tab); }
+  else if (d.share) share(d.share);
+  else if ('retry' in d) loadData();
   else if (d.bookmark) toggleBookmark(d.bookmark);
   else if (d.qmark) {
     const m = store.get('qmarks', []);
@@ -497,6 +579,8 @@ document.addEventListener('click', (e) => {
     store.set('profile', profile);
     closeSheet();
     render();
+    window.scrollTo(0, 0);
+    toast(first ? '준비됐어요. 오늘 내 지갑 날씨를 확인해보세요' : '관심사를 저장했어요');
     logEvent('profile_save', { first, fx: profile.fx.on && profile.fx.currency, car: profile.car.on, loan: profile.loan.on, savings: profile.savings.on, grocery: profile.grocery.on });
   }
   else if (el.id === 'gear') openProfile();
@@ -508,8 +592,10 @@ document.addEventListener('click', (e) => {
   await store.load(['profile', 'review', 'bookmarks', 'qmarks', 'streak', 'quizDays', 'quiz:' + DAY]);
   await store.load(store.get('quizDays', []).map((d) => 'quiz:' + d));
   profile = { ...structuredClone(DEFAULT_PROFILE), ...store.get('profile', {}) };
-  // 개발 중엔 public/today.json, 빌드(출시)에선 GitHub Pages의 today.json (GitHub Actions가 하루 두 번 갱신)
-  data = await fetch(import.meta.env.DEV ? '/today.json' : DATA_URL, { cache: 'no-store' }).then((r) => r.json());
-  render();
+  await store.load(['lastData', 'reviewAsked']);
+  // 마지막으로 받은 데이터가 있으면 먼저 보여주고(빠르게 열리게), 뒤에서 최신 데이터로 바꾼다
+  data = store.get('lastData', null);
+  if (data) render();
+  await loadData();
   logScreen('today');
 })();

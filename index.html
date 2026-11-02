@@ -49,6 +49,19 @@
   .mood { font-size:13px; font-weight:600; padding:6px 10px; border-radius:999px; background:var(--slot); color:var(--sub); }
   .mood.bad { background:#fff0f1; color:#d22030; }
   .mood.good { background:var(--ok-soft); color:#027a4a; }
+  .hero-main { flex:1; }
+  .share-btn { display:block; width:100%; margin-top:14px; padding:12px; border-radius:12px; background:var(--accent-soft); color:var(--accent); font-size:14px; font-weight:700; }
+  .notice { margin-top:12px; padding:10px 12px; border-radius:10px; background:#fff8e6; color:#8a5a00; font-size:13px; line-height:1.5; }
+  .notice .link { color:var(--accent); font-weight:700; text-decoration:underline; font-size:13px; padding:0; }
+  .empty-state { text-align:center; padding:32px 20px; margin-top:40px; }
+  #toast {
+    position:fixed; left:50%; bottom:calc(var(--sb) + 84px); z-index:60;
+    transform: translate(-50%, 12px); opacity:0; pointer-events:none;
+    width:max-content; max-width:calc(100% - 32px);
+    background:rgba(25,31,40,.92); color:#fff; font-size:14px; font-weight:500;
+    padding:12px 16px; border-radius:14px; text-align:center; transition: opacity .2s, transform .2s;
+  }
+  #toast.show { opacity:1; transform: translate(-50%, 0); }
   .badge { display:inline-block; font-size:11px; font-weight:600; color:#b25000; background:#fff3e0; border-radius:6px; padding:3px 6px; margin-top:10px; }
 
   /* 오늘: 지표 카드 */
@@ -189,6 +202,7 @@
   <button data-tab="terms">용어</button>
   <button data-tab="quiz">퀴즈</button>
 </nav>
+<div id="toast" role="status"></div>
 <div id="sheet" hidden><div class="sheet-body" id="sheet-body"></div></div>
 <script type="module" src="/src/main.js"></script>
 </body>

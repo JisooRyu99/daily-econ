@@ -68,6 +68,49 @@ export function onBackPress(handler) {
   return () => {};
 }
 
+// ---------- 공유 ----------
+// 토스에서 바로 열리는 링크를 붙여 공유 시트를 연다. 공유 링크 미리보기 이미지는 GitHub Pages의 og.png.
+// 브라우저(개발 중)에선 Web Share → 클립보드 복사 순으로 대신한다. 반환: 'shared' | 'copied' | 'failed'
+const APP_PATH = 'intoss://haru-econ';
+const OG_IMAGE = 'https://jisooryu99.github.io/daily-econ/og.png';
+export async function shareWithLink(text) {
+  try {
+    if (inToss) {
+      let link = '';
+      try {
+        link = await Toss.Share.createLink({ path: APP_PATH, ogImageUrl: OG_IMAGE });
+      } catch {
+        link = await Toss.Share.createLink({ path: APP_PATH });
+      }
+      await Toss.Share.sendMessage({ message: `${text}\n${link}` });
+      return 'shared';
+    }
+    if (navigator.share) {
+      await navigator.share({ text });
+      return 'shared';
+    }
+    await navigator.clipboard.writeText(text);
+    return 'copied';
+  } catch (e) {
+    console.warn('공유 실패', e);
+    return 'failed';
+  }
+}
+
+// ---------- 리뷰 요청 ----------
+// 토스 5.253.0+ 에서만 지원. 미지원이면 false.
+export async function requestReview() {
+  try {
+    if (inToss && Toss.Review?.request?.isSupported?.()) {
+      await Toss.Review.request();
+      return true;
+    }
+  } catch (e) {
+    console.warn('리뷰 요청 실패', e);
+  }
+  return false;
+}
+
 // ---------- 이용 지표 ----------
 // 추천 미니앱 선정에 재방문·전환 지표가 쓰인다. 미지원 버전에선 조용히 무시됨(토스 5.208.0+).
 export function logEvent(name, params = {}) {

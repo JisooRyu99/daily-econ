@@ -36,6 +36,8 @@ jobs:
         run: |
           mkdir -p site
           node data-pipeline/generate.mjs site/today.json
+          # 공유 링크 미리보기 이미지 (앱의 Share.createLink ogImageUrl)
+          cp assets/og.png site/og.png
 
       # site/today.json → GitHub Pages(gh-pages 브랜치). 앱이 이 주소를 fetch
       - name: Deploy to GitHub Pages
